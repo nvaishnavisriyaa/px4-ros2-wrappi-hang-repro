@@ -18,6 +18,8 @@ unusual inside the library to trigger.
 This repository holds the measurements and a patch. Nothing here needs ROS 2,
 Eigen, or a flight controller.
 
+Reported upstream as [Auterion/px4-ros2-interface-lib#228](https://github.com/Auterion/px4-ros2-interface-lib/issues/228).
+
 ## The code
 
 [`geometry.hpp` lines 69 to 77](https://github.com/Auterion/px4-ros2-interface-lib/blob/main/px4_ros2_cpp/include/px4_ros2/utils/geometry.hpp#L69-L77):
