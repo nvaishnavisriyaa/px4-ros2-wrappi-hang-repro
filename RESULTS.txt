@@ -1,0 +1,94 @@
+px4_ros2::wrapPi, unbounded loop
+================================================================
+Simulated in exact IEEE-754 binary32. No compiler required.
+
+1. Where the loop stops making progress
+---------------------------------------
+The loop subtracts 2*pi. Once 2*pi falls below half the spacing
+between neighbouring floats, the result rounds back to the same
+value and the loop runs forever.
+
+  2^20  =                1048576   spacing      0.125   progresses: True
+  2^21  =                2097152   spacing       0.25   progresses: True
+  2^22  =                4194304   spacing        0.5   progresses: True
+  2^23  =                8388608   spacing          1   progresses: True
+  2^24  =               16777216   spacing          2   progresses: True
+  2^25  =               33554432   spacing          4   progresses: True
+  2^26  =               67108864   spacing          8   progresses: True
+  2^27  =              134217728   spacing         16   progresses: True
+  2^28  =              268435456   spacing         32   progresses: False
+
+  exact boundary: 134217744 never returns, 134217728 still does
+
+2. What each input costs, wrapPi<float>
+---------------------------------------
+  input                                   outcome                           
+  1e3                                     0.97261 after 159 iterations      
+  1e4                                     -2.85748 after 1,592 iterations   
+  1e7                                     0.00191 after 1,583,682 iterations
+  134217728 (2^27)                        -2.56061 after 18,092,333 iterations
+  134217744                               NEVER RETURNS                     
+  1e9                                     NEVER RETURNS                     
+  FLT_MAX, e.g. uninitialised memory      NEVER RETURNS                     
+  +inf, e.g. a divide by zero             NEVER RETURNS                     
+  -inf                                    NEVER RETURNS                     
+  NaN                                     returns NaN, no hang              
+
+3. Is the replacement behaviour preserving
+------------------------------------------
+  200,000 random inputs already inside [-pi, pi)
+    upstream closed form bit identical to the loop: 200,000
+    proposed remainder   bit identical to the loop: 200,000
+
+  200,000 random inputs in [-1000, 1000] rad
+    upstream closed form: 1 outside [-pi, pi), worst gap 9.30e-04 rad
+    proposed remainder  : 0 outside [-pi, pi), worst gap 9.11e-04 rad
+
+4. The three implementations on the inputs that matter
+------------------------------------------------------
+  input       shipped loop                upstream closed form    proposed            
+  ----------------------------------------------------------------------------------
+  1e4         -2.85748 (1,592 iters)      -2.83105                -2.83129            
+  1e7         0.00191 (1,583,682 iters)   2.00000                 2.42927             
+  1e9         NEVER RETURNS               -64.00000  OUT OF RANGE -2.11740            
+  FLT_MAX     NEVER RETURNS               0.00000                 3.12177             
+  +inf        NEVER RETURNS               nan                     nan                 
+  NaN         nan (0 iters)               nan                     nan                 
+
+  For any |angle| past about 1e7 no implementation can give a
+  meaningful answer, because the spacing between floats is already
+  wider than 2*pi. The difference is that the shipped loop hangs,
+  while the other two return at once.
+
+5. Does the replacement still pass the repo's own tests
+-------------------------------------------------------
+  From px4_ros2_cpp/test/unit/utils/geometry.cpp,
+  TEST(Geometry, wrapPi). Tolerance 1e-3.
+
+  PASS  wrapPi(M_PI_2)             want   1.57080  got   1.57080
+  PASS  wrapPi(-M_PI_2)            want  -1.57080  got  -1.57080
+  PASS  wrapPi(4*M_PI)             want   0.00000  got   0.00000
+  PASS  wrapPi(-11.f*M_PI/4.f)     want  -2.35619  got  -2.35619
+  PASS  wrapPi(11.f*M_PI/4.f)      want   2.35619  got   2.35619
+  PASS  fabs(wrapPi(-11.0*M_PI))   want   3.14159  got   3.14159
+
+  All existing assertions pass.
+
+6. Accuracy, scored against an exact reference
+----------------------------------------------
+  The loop rounds once per iteration, so its error grows with the
+  number of iterations. This shows up long before it hangs.
+
+  input         exact    shipped    off by   proposed    off by
+  -------------------------------------------------------------
+  1e2        -0.53096   -0.53097    0.000d   -0.53097    0.000d
+  1e3         0.97354    0.97261    0.053d    0.97351    0.002d
+  1e4        -2.83101   -2.85748    1.517d   -2.83129    0.016d
+  1e5         3.10584   -1.40434  101.586d    3.10305    0.159d
+  1e6        -0.35756    2.72261  176.481d   -0.38539    1.594d
+
+  At 1e5 rad the shipped loop is off by about 100 degrees, which is
+  a wrong heading rather than a slow one.
+
+================================================================
+Done.

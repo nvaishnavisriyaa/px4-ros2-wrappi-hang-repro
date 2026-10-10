@@ -1,0 +1,37 @@
+diff --git a/px4_ros2_cpp/include/px4_ros2/utils/geometry.hpp b/px4_ros2_cpp/include/px4_ros2/utils/geometry.hpp
+index 7666426..3571086 100644
+--- a/px4_ros2_cpp/include/px4_ros2/utils/geometry.hpp
++++ b/px4_ros2_cpp/include/px4_ros2/utils/geometry.hpp
+@@ -25,6 +25,7 @@
+ #pragma once
+ 
+ #include <Eigen/Eigen>
++#include <cmath>
+ 
+ namespace px4_ros2 {
+ /** \ingroup geometry
+@@ -69,12 +70,19 @@ static inline constexpr float operator""_rad(long double radians)
+ template <typename Type>
+ Type wrapPi(Type angle)
+ {
+-  while (angle >= M_PI) {
+-    angle -= 2.0 * M_PI;
+-  }
+-  while (angle < -M_PI) {
+-    angle += 2.0 * M_PI;
++  // Subtracting 2*pi in a loop never finishes once 2*pi drops below half the
++  // spacing of the floating point type. In single precision that happens for
++  // any |angle| at or above 134217744, and straight away for an infinity.
++  // std::remainder is exact, runs in constant time, and returns NaN for a non
++  // finite input, which is the only honest answer when the input carries no
++  // angle information.
++  angle = std::remainder(angle, static_cast<Type>(2.0 * M_PI));
++
++  // std::remainder yields [-pi, pi]; the documented range is [-pi, pi).
++  if (angle >= static_cast<Type>(M_PI)) {
++    angle -= static_cast<Type>(2.0 * M_PI);
+   }
++
+   return angle;
+ }
+ 
